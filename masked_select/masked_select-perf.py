@@ -33,7 +33,7 @@ for device in ['cpu', 'cuda']:
                     # exact same thing if no broadcasting is needed
                     start_index_time = time.time()
                     for i in range(timed_iters):
-                        a_indexed = a[mask].clone()
+                        a_indexed = a[mask]
                     if device == 'cuda':
                         torch.cuda.synchronize()
                     total_index_time = time.time() - start_index_time
