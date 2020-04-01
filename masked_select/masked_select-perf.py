@@ -25,6 +25,8 @@ for device in ['cpu', 'cuda']:
                     start_time = time.time()
                     for i in range(timed_iters):
                         a_masked = torch.masked_select(a, mask)
+                    if device == 'cuda':
+                        torch.cuda.synchronize()
                     total_time = time.time() - start_time
 
                     # Compare with index performance, since masked_select will do the
@@ -32,6 +34,8 @@ for device in ['cpu', 'cuda']:
                     start_index_time = time.time()
                     for i in range(timed_iters):
                         a_indexed = a[mask].clone()
+                    if device == 'cuda':
+                        torch.cuda.synchronize()
                     total_index_time = time.time() - start_index_time
 
 
