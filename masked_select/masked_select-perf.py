@@ -6,7 +6,7 @@ torch.set_num_threads(1)
 timed_iters = 100
 max_mask_int = 10_000_000
 
-print('device dtype tensor_size mask_true_ratio time_per_iter')
+print('device dtype tensor_size mask_true_ratio time_per_iter time_per_index_iter')
 
 for device in ['cpu', 'cuda']:
     for dtype in [torch.float64]:
@@ -27,12 +27,32 @@ for device in ['cpu', 'cuda']:
                         a_masked = torch.masked_select(a, mask)
                     total_time = time.time() - start_time
 
-                time_per_iter = total_time / timed_iters
+                    # Compare with index performance, since masked_select will do the
+                    # exact same thing if no broadcasting is needed
+                    start_index_time = time.time()
+                    for i in range(timed_iters):
+                        a_indexed = a[mask].clone()
+                    total_index_time = time.time() - start_index_time
 
-                print("%s %s %d %f %f" % (
+
+                time_per_iter = total_time / timed_iters
+                time_per_index_iter = total_index_time / timed_iters
+
+                if device == 'cpu':
+                    a_masked_test = torch.masked_select(a.cuda(), mask.cuda())
+                else:
+                    a_masked_test = torch.masked_select(a.cpu(), mask.cpu())
+
+                matching = torch.all(a_masked_test.cpu().eq(a_masked.cpu()))
+                if not matching:
+                    print('CPU and CUDA do not match')
+                    exit(1)
+
+                print("%s %s %s %f %f %f" % (
                     device,
                     dtype,
                     tensor_size,
                     mask_true_ratio,
-                    time_per_iter
+                    time_per_iter,
+                    time_per_index_iter
                 ))
