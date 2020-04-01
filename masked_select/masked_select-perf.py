@@ -6,7 +6,7 @@ torch.set_num_threads(1)
 timed_iters = 100
 max_mask_int = 10_000_000
 
-print('device dtype tensor_size mask_true_ratio time_per_iter time_per_index_iter')
+print('device dtype tensor_size mask_true_ratio masked_select_time index_time')
 
 for device in ['cpu', 'cuda']:
     for dtype in [torch.float64]:
@@ -46,6 +46,11 @@ for device in ['cpu', 'cuda']:
                 matching = torch.all(a_masked_test.cpu().eq(a_masked.cpu()))
                 if not matching:
                     print('CPU and CUDA do not match')
+                    exit(1)
+
+                matching = torch.all(a_indexed.eq(a_masked))
+                if not matching:
+                    print('masked_select and index do not match')
                     exit(1)
 
                 print("%s %s %s %f %f %f" % (
