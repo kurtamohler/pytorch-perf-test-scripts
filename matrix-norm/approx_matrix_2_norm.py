@@ -43,20 +43,20 @@ def approx_eigenvalue(a, max_iters: int, mode: str):
 
     return eigenvalue
 
+class MyModule(torch.nn.Module):
+    def __init__(self, weight):
+        super(MyModule, self).__init__()
+        self.weight = torch.nn.Parameter(weight)
+            
+    def forward(self):
+        return self.weight
+
 def approx_spectral_largest(a, iters: int, method: str):
-    class MyModule(torch.nn.Module):
-        def __init__(self, weight):
-            super(MyModule, self).__init__()
-            self.weight = torch.nn.Parameter(weight)
-                
-        def forward(self):
-            return self.weight
                 
     b = torch.nn.utils.spectral_norm(
         MyModule(a),
         n_power_iterations=iters)()
             
-    
     if method == 'median':
         return (a / b).median()
     elif method == 'mean':
@@ -64,12 +64,30 @@ def approx_spectral_largest(a, iters: int, method: str):
     else:
         raise RuntimeError('method "%s" not available' % method)
 
+def approx_spectral_largest_custom(a, iters: int):
+    a_t = a.transpose(-1, -2)
+    u = torch.rand(a.size()[-1])
+    u /= u.norm()
+    v = torch.rand(a_t.size()[-1])
+    v /= v.norm()
+    
+    for _ in range(iters):
+        v_new = a.matmul(u)
+        v_new /= v_new.norm()
+        u_new = a_t.matmul(v)
+        u_new /= u_new.norm()
+        v = v_new
+        u = u_new
+
+    return v.matmul(a).matmul(u).abs()
+    
+
 if __name__ == '__main__':
     verbose = False
     
     samples_per_size = 1000
     
-    for norm_method in ['spectral_norm_mean', 'spectral_norm_median', 'Custom power iteration', 'numpy.linalg.norm']:
+    for norm_method in ['spectral_custom', 'spectral_norm_mean', 'spectral_norm_median', 'Custom power iteration', 'numpy.linalg.norm']:
         print('norm_method: %s' % norm_method)
         print('input_mat_size, num_power_iters, smallest_eigenvalue_relative_error_mean+/-std, largest_eigenvalue_relative_error_mean+/-std')
         for size in [
@@ -87,7 +105,7 @@ if __name__ == '__main__':
                 (100, 5),
                 (100, 1),
             ]:
-            max_power_iters = 1 if min(*size) == 1 else 20
+            max_power_iters = 1 if min(*size) == 1 else 100
         
             smallest_rel_errors = []
             largest_rel_errors = []
@@ -111,6 +129,9 @@ if __name__ == '__main__':
                     approx_smallest = 0
                 elif norm_method == 'spectral_norm_median':
                     approx_largest = approx_spectral_largest(a, max_power_iters, 'median')
+                    approx_smallest = 0
+                elif norm_method == 'spectral_custom':
+                    approx_largest = approx_spectral_largest_custom(a, max_power_iters)
                     approx_smallest = 0
                 else:
                     raise RuntimeError('Unknown norm method: %s' % norm_method)
