@@ -43,58 +43,86 @@ def approx_eigenvalue(a, max_iters: int, mode: str):
 
     return eigenvalue
 
-verbose = False
-
-samples_per_size = 10000
-
-for norm_method in ['Custom power iteration', 'numpy.linalg.norm']:
-    print('norm_method: %s' % norm_method)
-    print('input_mat_size, num_power_iters, smallest_eigenvalue_relative_error_mean+/-std, largest_eigenvalue_relative_error_mean+/-std')
-    for size in [
-            (1, 100),
-            (5, 100),
-            (10, 100),
-            (25, 100),
-            (50, 100),
-            (75, 100),
-            (100, 100),
-            (100, 75),
-            (100, 50),
-            (100, 25),
-            (100, 10),
-            (100, 5),
-            (100, 1),
-        ]:
-        max_power_iters = 1 if min(*size) == 1 else 20
-    
-        smallest_rel_errors = []
-        largest_rel_errors = []
-    
-        for _ in range(samples_per_size):
-            a = (torch.rand(*size) - 0.5) * 2
-            eigenvalues = a.svd(True, False)[1].abs()
-            #eigenvalues = torch.tensor(numpy.linalg.svd(a.cpu().numpy())[1], device=a.device).abs()
+def approx_spectral_largest(a, iters: int, method: str):
+    class MyModule(torch.nn.Module):
+        def __init__(self, weight):
+            super(MyModule, self).__init__()
+            self.weight = torch.nn.Parameter(weight)
+                
+        def forward(self):
+            return self.weight
+                
+    b = torch.nn.utils.spectral_norm(
+        MyModule(a),
+        n_power_iterations=iters)()
             
-            exact_largest = eigenvalues.max()
-            exact_smallest = eigenvalues.min()
-            
-            if norm_method == 'numpy.linalg.norm':
-                approx_smallest = numpy.linalg.norm(a.cpu(), ord=-2)
-                approx_largest = numpy.linalg.norm(a.cpu(), ord=2)
-            elif norm_method == 'Custom power iteration':
-                approx_largest = approx_eigenvalue(a, max_power_iters, 'max')
-                approx_smallest = approx_eigenvalue(a, max_power_iters, 'min')
-            else:
-                raise RuntimeError('Unknown norm method: %s' % norm_method)
     
-            error_smallest = ((approx_smallest - exact_smallest) / exact_smallest).abs()
-            error_largest = ((approx_largest - exact_largest) / exact_largest).abs()
+    if method == 'median':
+        return (a / b).median()
+    elif method == 'mean':
+        return (a / b).mean()
+    else:
+        raise RuntimeError('method "%s" not available' % method)
+
+if __name__ == '__main__':
+    verbose = False
     
-            smallest_rel_errors.append(error_smallest)
-            largest_rel_errors.append(error_largest)
+    samples_per_size = 1000
     
-        smallest_val_error_std, smallest_val_error_mean = torch.std_mean(torch.tensor(smallest_rel_errors))
-        largest_val_error_std, largest_val_error_mean = torch.std_mean(torch.tensor(largest_rel_errors))
-    
-        print("%s, %d, %f+/-%f, %f+/-%f" % (size, max_power_iters, smallest_val_error_mean, smallest_val_error_std, largest_val_error_mean, largest_val_error_std))
-    print()
+    for norm_method in ['spectral_norm_mean', 'spectral_norm_median', 'Custom power iteration', 'numpy.linalg.norm']:
+        print('norm_method: %s' % norm_method)
+        print('input_mat_size, num_power_iters, smallest_eigenvalue_relative_error_mean+/-std, largest_eigenvalue_relative_error_mean+/-std')
+        for size in [
+                (1, 100),
+                (5, 100),
+                (10, 100),
+                (25, 100),
+                (50, 100),
+                (75, 100),
+                (100, 100),
+                (100, 75),
+                (100, 50),
+                (100, 25),
+                (100, 10),
+                (100, 5),
+                (100, 1),
+            ]:
+            max_power_iters = 1 if min(*size) == 1 else 20
+        
+            smallest_rel_errors = []
+            largest_rel_errors = []
+        
+            for _ in range(samples_per_size):
+                a = (torch.rand(*size) - 0.5) * 2
+                eigenvalues = a.svd(True, False)[1].abs()
+                #eigenvalues = torch.tensor(numpy.linalg.svd(a.cpu().numpy())[1], device=a.device).abs()
+                
+                exact_largest = eigenvalues.max()
+                exact_smallest = eigenvalues.min()
+                
+                if norm_method == 'numpy.linalg.norm':
+                    approx_smallest = numpy.linalg.norm(a.cpu(), ord=-2)
+                    approx_largest = numpy.linalg.norm(a.cpu(), ord=2)
+                elif norm_method == 'Custom power iteration':
+                    approx_largest = approx_eigenvalue(a, max_power_iters, 'max')
+                    approx_smallest = approx_eigenvalue(a, max_power_iters, 'min')
+                elif norm_method == 'spectral_norm_mean':
+                    approx_largest = approx_spectral_largest(a, max_power_iters, 'mean')
+                    approx_smallest = 0
+                elif norm_method == 'spectral_norm_median':
+                    approx_largest = approx_spectral_largest(a, max_power_iters, 'median')
+                    approx_smallest = 0
+                else:
+                    raise RuntimeError('Unknown norm method: %s' % norm_method)
+        
+                error_smallest = ((approx_smallest - exact_smallest) / exact_smallest).abs()
+                error_largest = ((approx_largest - exact_largest) / exact_largest).abs()
+        
+                smallest_rel_errors.append(error_smallest)
+                largest_rel_errors.append(error_largest)
+        
+            smallest_val_error_std, smallest_val_error_mean = torch.std_mean(torch.tensor(smallest_rel_errors))
+            largest_val_error_std, largest_val_error_mean = torch.std_mean(torch.tensor(largest_rel_errors))
+        
+            print("%s, %d, %f+/-%f, %f+/-%f" % (size, max_power_iters, smallest_val_error_mean, smallest_val_error_std, largest_val_error_mean, largest_val_error_std))
+        print()
