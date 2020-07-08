@@ -3,6 +3,7 @@ import numpy
 import math
 import pandas
 
+torch.manual_seed(0)
 
 def compare_torch_and_numpy(a, p_list):
     a_n = a.numpy()
