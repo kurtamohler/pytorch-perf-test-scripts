@@ -8,20 +8,21 @@ def compare_torch_and_numpy(a, p_list):
     a_n = a.numpy()
     torch_results = []
     numpy_results = []
-    matching = []
+    matches = []
     for p in p_list:
-        torch_result = a.norm(p=p).item()
+        torch_result = a.norm(p=p)
         numpy_result = numpy.linalg.norm(a_n, ord=p)
 
-        torch_results.append(torch_result)
+        torch_results.append(torch_result.item())
         numpy_results.append(numpy_result)
-        matching.append(torch_result == numpy_result)
+        match = (torch_result - numpy_result).abs().lt(1e-5).all()
+        matches.append(match.item())
     
     df = pandas.DataFrame({
         'p': p_list,
         'torch_result': torch_results,
         'numpy_result': numpy_results,
-        'match': matching
+        'equal': matches
     })
     return df.where(df.notnull(), None)
 
