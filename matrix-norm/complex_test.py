@@ -17,12 +17,13 @@ def compare_torch_and_numpy(a, p_list):
         numpy_results.append(numpy_result)
         matching.append(torch_result == numpy_result)
     
-    return pandas.DataFrame({
+    df = pandas.DataFrame({
         'p': p_list,
         'torch_result': torch_results,
         'numpy_result': numpy_results,
         'match': matching
     })
+    return df.where(df.notnull(), None)
 
 a = torch.tensor([1+2j, 3j, 4, 3+5j])
 p_list = [None, math.inf, 2, 1, 0.5, 0, -0.5, -1, -2, -math.inf]
