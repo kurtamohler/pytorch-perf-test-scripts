@@ -41,6 +41,6 @@ print()
 
 a = torch.randn(5, 20) + 1j * torch.randn(5, 20)
 a = torch.tensor([[1+2j, 3j], [4, 3+5j]])
-p_list = ['fro', 'nuc', math.inf, 2, 1, -1, -2, -math.inf]
+p_list = [None, 'fro', 'nuc', math.inf, 2, 1, -1, -2, -math.inf]
 print('Complex matrix norms:')
 print(compare_torch_and_numpy(a, p_list))
