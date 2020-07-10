@@ -196,13 +196,21 @@ if __name__ == "__main__":
       os.mkdir(args.save_path)
 
     print("Before setting var: %s" % check_determinism(args))
+
+    # set env var for deterministic stream usage
     old_var = os.environ.get('CUBLAS_WORKSPACE_CONFIG')
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-    print("After setting var: %s" % check_determinism(args))
+
+    with  torch.cuda.stream(torch.cuda.Stream()):
+        print("After setting var: %s" % check_determinism(args))
+
+    # restore previous env var setting
     if old_var is None:
         del os.environ['CUBLAS_WORKSPACE_CONFIG']
     else:
         os.environ['CUBLAS_WORKSPACE_CONFIG'] = old_var
-    print("After restoring old var: %s" % check_determinism(args))
+
+    with torch.cuda.stream(torch.cuda.Stream()):
+        print("After restoring old var: %s" % check_determinism(args))
 
 
