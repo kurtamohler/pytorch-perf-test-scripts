@@ -195,10 +195,14 @@ if __name__ == "__main__":
     if not os.path.exists(args.save_path):
       os.mkdir(args.save_path)
 
-    print("Before setting deterministic: %s" % check_determinism(args))
-    torch.set_deterministic(True)
-    print("After setting deterministic: %s" % check_determinism(args))
-    torch.set_deterministic(False)
-    print("After unsetting deterministic: %s" % check_determinism(args))
+    print("Before setting var: %s" % check_determinism(args))
+    old_var = os.environ.get('CUBLAS_WORKSPACE_CONFIG')
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+    print("After setting var: %s" % check_determinism(args))
+    if old_var is None:
+        del os.environ['CUBLAS_WORKSPACE_CONFIG']
+    else:
+        os.environ['CUBLAS_WORKSPACE_CONFIG'] = old_var
+    print("After restoring old var: %s" % check_determinism(args))
 
 
