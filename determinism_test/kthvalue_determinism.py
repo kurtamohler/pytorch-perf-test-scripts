@@ -51,9 +51,9 @@ for device in ['cpu', 'cuda']:
     for size in [20, 100, 1_000, 10_000]:#, 10_000_000]:
         for num_copies in [1, 2, 5, 10, 11]:
             is_deterministic, result_indices = test_kthvalue(size, num_copies, device)
-            if len(result_indices):
+            if len(result_indices) > 0:
                 has_unique_map = len(result_indices) == len(set(result_indices))
             else:
-                has_duplicates = 'N/A'
+                has_unique_map = 'N/A'
 
             print(f'{device} {size} {num_copies} {has_unique_map} {is_deterministic}')
