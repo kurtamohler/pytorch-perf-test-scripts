@@ -7,22 +7,22 @@ import timeit
 
 torch.set_num_threads(1)
 
-numel_and_timeitnum_list = [
+numel_and_timed_iters_list = [
     (2 ** 8, 10000),
     (2 ** (8 * 2), 1000),
     (2 ** (8 * 3), 10),
 ]
 
 for device in ['cpu', 'cuda']:
+    is_cuda = device == 'cuda'
     for dtype in [torch.float32, torch.float64, torch.cfloat, torch.cdouble]:
-        print("===============================")
-        print(f"{device} {dtype}")
-        print("===============================")
-        print()
+        print(f"<details><summary>{device} {dtype}</summary>\n\n```")
+
         print('ndim numel ord norm_time linalg_norm_time linalg_speedup')
         print()
+
         for ndim in [1, 2, 4, 8]:
-            for numel, timeitnum in numel_and_timeitnum_list:
+            for numel, timed_iters in numel_and_timed_iters_list:
                 dim_size = int(round(numel ** (1 / ndim)))
                 input_size = [dim_size] * ndim
                 for ord in [-float('inf'), -3.5, -2, -1, -0.5, 0, 0.5, 1, 2, 3.5, float('inf')]:
@@ -34,25 +34,33 @@ for device in ['cpu', 'cuda']:
                         'torch': torch,
                     }
 
+                    linalg_norm_stmt = 'torch.linalg.norm(input, ord, flatten=True)'
+                    norm_stmt = 'torch.norm(input, p=ord)'
+
+                    if is_cuda:
+                        cuda_sync = '\ntorch.cuda.synchronize()'
+                        linalg_norm_stmt += cuda_sync
+                        norm_stmt += cuda_sync
+
                     torch.manual_seed(0)
                     linalg_norm_time = timeit.repeat(
-                        stmt='torch.linalg.norm(input, ord, flatten=True)',
+                        stmt=linalg_norm_stmt,
                         setup='input = torch.randn(input_size, dtype=dtype, device=device)',
                         repeat=2,
-                        number=timeitnum,
+                        number=timed_iters,
                         globals=variables)[1]
 
                     torch.manual_seed(0)
                     norm_time = timeit.repeat(
-                        stmt='torch.norm(input, p=ord)',
+                        stmt=norm_stmt,
                         setup='input = torch.randn(input_size, dtype=dtype, device=device)',
                         repeat=2,
-                        number=timeitnum,
+                        number=timed_iters,
                         globals=variables)[1]
 
                     linalg_speedup = norm_time / linalg_norm_time
 
                     print(f'{ndim} {numel} {ord} {norm_time} {linalg_norm_time} {linalg_speedup}')
             print()
-        print()
+        print(f"```\n\n</details>")
 
