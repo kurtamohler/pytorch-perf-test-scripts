@@ -49,7 +49,7 @@ print(f'dtype device order input-size {" ".join(methods.keys())}')
 print()
 for dtype in [torch.float, torch.cfloat, torch.double, torch.cdouble]:
     for device in ['cpu', 'cuda']:
-        for order in [1, 2, 3, float('inf'), -float('inf')]:
+        for order in [0.5, 1, 2, 3.5, float('inf'), -float('inf')]:
             for input_size in [3, 8_000, 16_000, 44_100, 32 * 44_100]:
                 # CPU is much slower than CUDA, so it needs fewer timed iterations
                 if device == 'cpu':
@@ -98,13 +98,17 @@ for dtype in [torch.float, torch.cfloat, torch.double, torch.cdouble]:
 
                         times_for_input.append(time_seconds)
                     times_for_all_inputs.append(times_for_input)
-                avg_times = torch.tensor(times_for_all_inputs, dtype=torch.float64).mean(dim=0).tolist()
                 # Make sure that the difference between results of the different
                 # methods is very small, so we know they are all calculating the
                 # same thing
                 for result_ind in range(1, len(results)):
                     if results[0] != results[result_ind]:
                         assert ((results[0] - results[result_ind]) / results[0]).abs() < 0.001
-                print(f'{dtype} {device} {order} {input_size} {" ".join([str(t) for t in avg_times])}')
+                # Take the median of the timed loops, rather than average, to
+                # minimize the chances of uncontrollable interference (like
+                # OS context switching or frequency throttling) blowing up
+                # the measurement
+                median_times = torch.tensor(times_for_all_inputs, dtype=torch.float64).median(dim=0)[0].tolist()
+                print(f'{dtype} {device} {order} {input_size} {" ".join([str(t) for t in median_times])}')
             print()
 
