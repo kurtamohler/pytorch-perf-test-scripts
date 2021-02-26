@@ -8,11 +8,15 @@ test_cases = product(
     # Devices
     ['cuda'],
 
+    # Include backward
+    [False, True],
+
     # dtype for the embedding
     [torch.float, torch.double],
 
     # Mode
     ['sum', 'mean', 'max'],
+    #['max'],
 
     # Embedding sizes
     [(100, 100)],
@@ -31,8 +35,14 @@ num_inputs_per_case = 10
 # Number of times to call embedding_bag within a timed loop
 timed_iters = 100
 
-def measure_run_time(indices, embedding, mode, padding_idx, timed_iters):
+def measure_run_time(indices, embedding, mode, padding_idx, include_backward, timed_iters):
     need_sync = embedding.device.type == 'cuda'
+
+    # If we're including backward function in the measurement, generate an
+    # output gradient to use for all backward calls. This minimizes overhead
+    # compared to doing something like `result.sum().backward()`.
+    if include_backward:
+        output_grad = torch.ones(indices.size(0), embedding.size(1), device=embedding.device, dtype=embedding.dtype)
 
     try:
         for warmup in range(2):
@@ -44,6 +54,10 @@ def measure_run_time(indices, embedding, mode, padding_idx, timed_iters):
                     embedding,
                     mode=mode,
                     padding_idx=padding_idx)
+
+                if include_backward:
+                    result.backward(output_grad)
+
 
             if need_sync:
                 torch.cuda.synchronize(embedding.device)
@@ -64,6 +78,9 @@ def measure_run_time(indices, embedding, mode, padding_idx, timed_iters):
                     embedding,
                     mode=mode)
 
+                if include_backward:
+                    result.backward(output_grad)
+
             if need_sync:
                 torch.cuda.synchronize(embedding.device)
 
@@ -71,12 +88,12 @@ def measure_run_time(indices, embedding, mode, padding_idx, timed_iters):
         return (end - start) / timed_iters
 
 print((
-    f'| device | dtype | mode | '
+    f'| device | include_backward | dtype | mode | '
     f'embedding_size | indices_size | padding_ratio | '
     f'median_time |'))
 print(('| --- ' * 7) + '|')
 
-for device, dtype, mode, embedding_size, indices_size, padding_ratio in test_cases:
+for device, include_backward, dtype, mode, embedding_size, indices_size, padding_ratio in test_cases:
     assert padding_ratio >= 0.0 and padding_ratio <= 1.0
 
     num_bags = indices_size[0]
@@ -93,7 +110,11 @@ for device, dtype, mode, embedding_size, indices_size, padding_ratio in test_cas
     random.seed(0)
 
     for input_num in range(num_inputs_per_case):
-        embedding = torch.randn(embedding_size, dtype=dtype, device=device)
+        embedding = torch.randn(
+            embedding_size,
+            dtype=dtype,
+            device=device,
+            requires_grad=include_backward)
 
         # If using padding, first avoid setting anything to padding_idx,
         # then fill in the required number of padding indices randomly
@@ -116,13 +137,13 @@ for device, dtype, mode, embedding_size, indices_size, padding_ratio in test_cas
             assert num_padding_check == num_padding
 
         run_times.append(measure_run_time(
-            indices, embedding, mode, padding_idx, timed_iters))
+            indices, embedding, mode, padding_idx, include_backward, timed_iters))
 
     median_time = torch.tensor(run_times).median()
 
     if median_time != 0:
         print((
-            f'| {device} | {dtype} | {mode} | '
+            f'| {device} | {include_backward} | {dtype} | {mode} | '
             f'{embedding_size} | {indices_size} | {padding_ratio} | '
             f'{median_time} |'))
 
