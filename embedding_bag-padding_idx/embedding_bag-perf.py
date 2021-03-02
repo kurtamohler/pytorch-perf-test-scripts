@@ -1,12 +1,13 @@
 import torch
 import random
+import sys
 from itertools import product
 from math import ceil
 from time import time
 
 test_cases = product(
     # Devices
-    ['cuda'],
+    sys.argv[1:],
 
     # Include backward
     [False, True],
@@ -16,7 +17,6 @@ test_cases = product(
 
     # Mode
     ['sum', 'mean', 'max'],
-    #['max'],
 
     # Embedding sizes
     [(100, 100)],
@@ -31,9 +31,6 @@ test_cases = product(
 # Each case will be run multiple times with different inputs, and the median
 # time will be reported
 num_inputs_per_case = 10
-
-# Number of times to call embedding_bag within a timed loop
-timed_iters = 100
 
 def measure_run_time(indices, embedding, mode, padding_idx, include_backward, timed_iters):
     need_sync = embedding.device.type == 'cuda'
@@ -95,6 +92,13 @@ print(('| --- ' * 7) + '|')
 
 for device, include_backward, dtype, mode, embedding_size, indices_size, padding_ratio in test_cases:
     assert padding_ratio >= 0.0 and padding_ratio <= 1.0
+
+    # Number of times to call embedding_bag within a timed loop. CPU is
+    # slower than CUDA, so should have fewer iterations
+    if device == 'cpu':
+        timed_iters = 10
+    else:
+        timed_iters = 100
 
     num_bags = indices_size[0]
     num_embeddings = embedding_size[0]
