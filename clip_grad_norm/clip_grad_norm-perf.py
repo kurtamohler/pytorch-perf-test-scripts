@@ -3,10 +3,10 @@ import sys
 from time import time
 from itertools import product
 
-def measure_run_time(parameters, max_norm, norm_type, min_total_time, start_timed_iters=None):
+def measure_run_time(parameters, max_norm, norm_type, min_total_time):
     need_sync = (parameters[0].device.type == 'cuda')
 
-    timed_iters = 2 if start_timed_iters is None else start_timed_iters
+    timed_iters = 2
 
     run_time = None
     
@@ -27,7 +27,7 @@ def measure_run_time(parameters, max_norm, norm_type, min_total_time, start_time
         # If the total time was long enough, calculate the time per iteration.
         # Otherwise, increase the iteration count appropriately to try to reach
         # the target time.
-        if (start_timed_iters is not None) or (total_time >= min_total_time):
+        if total_time >= min_total_time:
             run_time = total_time / timed_iters
         else:
             timed_iters = int(timed_iters * 1.2 * min_total_time / total_time)
@@ -42,7 +42,7 @@ test_cases = product(
     [torch.float32, torch.float64],
 
     # Number of parameters
-    [1, 10, 100],
+    [1, 2, 10, 100],
 
     # Parameter size
     [(10,), (1000,), (100_000,), (1_000_000,)],
@@ -63,7 +63,6 @@ torch.manual_seed(0)
 
 for device, dtype, num_params, param_size, norm_type in test_cases:
     run_times = []
-    start_timed_iters = None
     for sample_num in range(sample_count):
         try:
             parameters = [torch.randn(param_size, device=device, dtype=dtype, requires_grad=True) for _ in range(num_params)]
@@ -75,7 +74,7 @@ for device, dtype, num_params, param_size, norm_type in test_cases:
         for param in parameters:
             param.mul(mul_factor).sum().backward()
 
-        run_time, start_timed_iters = measure_run_time(parameters, max_norm, norm_type, min_total_time, start_timed_iters)
+        run_time, start_timed_iters = measure_run_time(parameters, max_norm, norm_type, min_total_time)
         run_times.append(run_time)
 
     median_time = torch.tensor(run_times, dtype=torch.float64).median()
