@@ -3,10 +3,10 @@ import sys
 from time import time
 from itertools import product
 
-def measure_run_time(parameters, max_norm, norm_type, min_total_time, start_timed_iters=2):
+def measure_run_time(parameters, max_norm, norm_type, min_total_time, start_timed_iters=None):
     need_sync = (parameters[0].device.type == 'cuda')
 
-    timed_iters = start_timed_iters
+    timed_iters = 2 if start_timed_iters is None else start_timed_iters
 
     run_time = None
     
@@ -27,7 +27,7 @@ def measure_run_time(parameters, max_norm, norm_type, min_total_time, start_time
         # If the total time was long enough, calculate the time per iteration.
         # Otherwise, increase the iteration count appropriately to try to reach
         # the target time.
-        if total_time >= min_total_time:
+        if (start_timed_iters is not None) or (total_time >= min_total_time):
             run_time = total_time / timed_iters
         else:
             timed_iters = int(timed_iters * 1.2 * min_total_time / total_time)
@@ -42,7 +42,7 @@ test_cases = product(
     [torch.float32, torch.float64],
 
     # Number of parameters
-    [1, 10, 100, 1000],
+    [1, 10, 100],
 
     # Parameter size
     [(10,), (1000,), (100_000,), (1_000_000,)],
@@ -51,7 +51,7 @@ test_cases = product(
     [float('inf')]
 )
 
-min_total_time = 0.2
+min_total_time = 0.1
 sample_count = 5
 mul_factor = 10
 max_norm = 0.1
@@ -63,7 +63,7 @@ torch.manual_seed(0)
 
 for device, dtype, num_params, param_size, norm_type in test_cases:
     run_times = []
-    start_timed_iters = 2
+    start_timed_iters = None
     for sample_num in range(sample_count):
         try:
             parameters = [torch.randn(param_size, device=device, dtype=dtype, requires_grad=True) for _ in range(num_params)]
