@@ -68,13 +68,14 @@ gen_funcs = [
 num_tries = 10000
 mat_size = 4
 
-print('| func_name | ratio det is exactly 0 | ratio singular value 0 |')
-print('| --- | --- | --- |')
+print('| func_name | ratio det is exactly 0 | ratio singular value 0 | ratio acceptable |')
+print('| --- | --- | --- | --- |')
 for gen_func in gen_funcs:
     torch.manual_seed(0)
     random.seed(0)
     num_det_eq_0 = 0
     num_has_svd_0 = 0
+    num_acceptable = 0
 
     for _ in range(num_tries):
         m = gen_func(mat_size, torch.cdouble)
@@ -85,6 +86,9 @@ for gen_func in gen_funcs:
         if m.svd()[1].eq(0).any():
             num_has_svd_0 += 1
 
-    print(f'| {gen_func.__name__} | {num_det_eq_0 / num_tries} | {num_has_svd_0 / num_tries} |')
+        if m.det().eq(0).item() and m.svd()[1].ne(0).all().item():
+            num_acceptable += 1
+
+    print(f'| {gen_func.__name__} | {num_det_eq_0 / num_tries} | {num_has_svd_0 / num_tries} | {num_acceptable / num_tries} |')
 
 
