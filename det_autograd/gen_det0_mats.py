@@ -19,7 +19,7 @@ def gen_with_svd(mat_size, dtype):
 
     s = torch.randint(1, 10, (mat_size,)).to(torch.cdouble)
     if dtype.is_complex:
-        s += 1j * torch.randint(1, 10, (4,)).to(torch.cdouble)
+        s += 1j * torch.randint(1, 10, (mat_size,)).to(torch.cdouble)
     s[-k:] = 0
 
     matrix = (u * s.unsqueeze(-2)) @ v.transpose(-1, -2).conj()
