@@ -31,7 +31,7 @@ def gen_with_matmul_floats(mat_size, dtype):
     b = torch.randn(1, mat_size, dtype=dtype)
     return a @ b
 
-def gen_with_matmul_ints_base(mat_size, dtype, avoid_svd_eq_0):
+def gen_with_matmul_ints_base(mat_size, dtype, avoid_svd_eq_0, prenormalize=False):
     lo = -5
     hi = 5
     a_size = (mat_size, 1)
@@ -47,15 +47,55 @@ def gen_with_matmul_ints_base(mat_size, dtype, avoid_svd_eq_0):
             b[b.eq(0)] = random.choice([hi, 1j * hi])
     else:
         assert False
+
+    if prenormalize:
+        a /= a.norm()
+        b /= b.norm()
     return a @ b
 
 def gen_with_matmul_ints(mat_size, dtype):
     return gen_with_matmul_ints_base(mat_size, dtype, False)
 
 
-def gen_with_matmul_ints_avoid_svd_eq_0(mat_size, dtype):
-    return gen_with_matmul_ints_base(mat_size, dtype, True)
+def gen_with_matmul_ints_avoid_svd_eq_0(mat_size, dtype, prenormalize=False):
+    return gen_with_matmul_ints_base(mat_size, dtype, True, prenormalize)
 
+def gen_with_matmul_ints_avoid_svd_eq_0_rank_2(mat_size, dtype):
+    return gen_with_matmul_ints_avoid_svd_eq_0(mat_size, dtype) + gen_with_matmul_ints_avoid_svd_eq_0(mat_size, dtype)
+
+def gen_prenorm_sum(mat_size, dtype, rank):
+    res = torch.zeros(mat_size, mat_size, dtype=dtype)
+
+    for r in range(rank):
+        u = torch.torch.rand(mat_size, dtype=dtype)
+        u /= u.norm()
+
+        v = torch.torch.rand(mat_size, dtype=dtype)
+        v /= v.norm()
+
+        res += u.unsqueeze(-1) * v.unsqueeze(-2)
+
+    return res
+
+def gen_prenorm_sum_rank_1(mat_size, dtype):
+    return gen_prenorm_sum(mat_size, dtype, 1)
+
+def gen_prenorm_sum_rank_2(mat_size, dtype):
+    return gen_prenorm_sum(mat_size, dtype, 2)
+
+def gen_with_matmul_ints_prenorm_sum(mat_size, dtype, rank):
+    res = torch.zeros(mat_size, mat_size, dtype=dtype)
+
+    for r in range(rank):
+        res += gen_with_matmul_ints_avoid_svd_eq_0(mat_size, dtype, prenormalize=True)
+
+    return res
+
+def gen_with_matmul_ints_prenorm_sum_rank_1(mat_size, dtype):
+    return gen_with_matmul_ints_prenorm_sum(mat_size, dtype, 1)
+
+def gen_with_matmul_ints_prenorm_sum_rank_2(mat_size, dtype):
+    return gen_with_matmul_ints_prenorm_sum(mat_size, dtype, 2)
 
 gen_funcs = [
     gen_with_randn,
@@ -63,6 +103,11 @@ gen_funcs = [
     gen_with_matmul_floats,
     gen_with_matmul_ints,
     gen_with_matmul_ints_avoid_svd_eq_0,
+    gen_with_matmul_ints_avoid_svd_eq_0_rank_2,
+    gen_prenorm_sum_rank_1,
+    gen_prenorm_sum_rank_2,
+    gen_with_matmul_ints_prenorm_sum_rank_1,
+    gen_with_matmul_ints_prenorm_sum_rank_2,
 ]
 
 num_tries = 10000
