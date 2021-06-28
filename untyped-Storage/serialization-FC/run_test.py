@@ -7,6 +7,7 @@
 # to use the same seed value that was used to initially generate them), read
 # the file associated with each test case, and compare the results.
 
+import argparse
 import itertools
 import os
 import torch
@@ -31,6 +32,22 @@ all_devices = [
 def dtype_name(dtype):
     return str(dtype).split('.')[-1]
 
+# Determine whether we have the old or new Storage API
+def is_new_api():
+    try:
+        torch.FloatStorage()
+    except RuntimeError:
+        return True
+    else:
+        return False
+
+def get_storage(tensor):
+    if is_new_api():
+        return torch.storage.TypedStorage(tensor.storage(), tensor.dtype)
+    else:
+        return tensor.storage()
+
+
 # ==========================
 # Test regular serialization with tensors
 #
@@ -41,11 +58,14 @@ def regular_serialization(seed=0):
     test_cases = {}
     for dtype, device in itertools.product(all_dtypes, all_devices):
         base_name = f'regular_serialization_{dtype_name(dtype)}_{device}'
+
         test_cases[f'{base_name}_0'] = [
             make_tensor((3, 5), device, dtype, low=-9, high=9)
         ]
+
         a = make_tensor((3, 2, 2), device, dtype, low=-9, high=9)
-        test_cases[f'{base_name}_0'] = [
+        test_cases[f'{base_name}_1'] = [
+            get_storage(a),
             a.view((2, 6, 1)),
             a,
             a[1:],
@@ -56,8 +76,10 @@ def regular_serialization(seed=0):
 # Storage save/load is not fully FC
 
 
-def pickle_all(seed=0, root='pickles'):
-    print('Pickling all test cases')
+def save_cases(seed=0, root='pickles'):
+    print('-----------------')
+    print('Saving test cases')
+    print('-----------------')
     if not os.path.exists(root):
         os.makedirs(root)
 
@@ -79,8 +101,10 @@ def pickle_all(seed=0, root='pickles'):
                 pickle_module=module)
 
 
-def unpickle_all(seed=0, root='pickles'):
-    print('Unpickling all test cases')
+def load_and_check_cases(seed=0, root='pickles'):
+    print('-----------------------------------------')
+    print('Load test cases and check for correctness')
+    print('-----------------------------------------')
     passed = True
     for case_name, check_list in regular_serialization(seed).items():
         pickle_settings = itertools.product(
@@ -102,14 +126,24 @@ def unpickle_all(seed=0, root='pickles'):
                 os.path.join(root, file_name),
                 pickle_module=module)
 
+            passed = True
+
             for idx0 in range(len(check_list)):
                 check_val0 = check_list[idx0]
                 loaded_val0 = loaded_list[idx0]
 
                 # Check that loaded values are what they should be
-                if not check_val0.eq(loaded_val0).all():
-                    print(f'{file_name}: FAIL - values incorrect')
-                    passed = False
+                if torch.is_tensor(check_val0):
+                    if not check_val0.eq(loaded_val0).all():
+                        print(f'{file_name}: FAIL - values incorrect')
+                        passed = False
+                        break
+                elif torch.is_storage(check_val0):
+                    #print(loaded_val0)
+                    if not check_val0.tolist() == loaded_val0.tolist():
+                        print(f'{file_name}: FAIL - values incorrect')
+                        passed = False
+                        break
 
                 # Check that storage sharing is preserved
                 for idx1 in range(len(check_list) - 1 - idx0):
@@ -119,6 +153,11 @@ def unpickle_all(seed=0, root='pickles'):
                     if check_val0.data_ptr() == check_val1.data_ptr():
                         if not loaded_val0.data_ptr() == loaded_val1.data_ptr():
                             print(f'{file_name}: FAIL - sharing not preserved')
+                            passed = False
+                            break
+
+                if not passed:
+                    break
 
     if passed:
         print('all cases PASSED')
@@ -127,15 +166,25 @@ def unpickle_all(seed=0, root='pickles'):
 if __name__ == '__main__':
     seed = 0
 
-    # Determine whether we have the old or new Storage API
-    try:
-        torch.FloatStorage()
-    except RuntimeError:
-        is_new_api = True
-    else:
-        is_new_api = False
+    parser = argparse.ArgumentParser(
+        description='Test FC for PyTorch serialization')
 
-    if is_new_api:
-        pickle_all(seed)
-    else:
-        unpickle_all(seed)
+    parser.add_argument(
+        '--save',
+        action='store_true',
+        default=False,
+        help='Save all test cases')
+
+    parser.add_argument(
+        '--load',
+        action='store_true',
+        default=False,
+        help='Load all test cases and check for correctness')
+
+    args = parser.parse_args()
+
+    if args.save:
+        save_cases(seed)
+
+    if args.load:
+        load_and_check_cases(seed)
