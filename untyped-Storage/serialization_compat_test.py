@@ -41,12 +41,7 @@ def get_storage(tensor):
     else:
         return tensor.storage()
 
-
-# ==========================
-# Test regular serialization with tensors
-#
-# Tensor save/load should be mostly FC. However, if two tensors of different
-# dtypes share a storage, saving them is not FC.
+# Generate test cases for regular serialization (like torch.save/load)
 def regular_serialization(seed=0):
     torch.manual_seed(seed)
     test_cases = {}
@@ -66,9 +61,6 @@ def regular_serialization(seed=0):
         ]
 
     return test_cases
-
-# Storage save/load is not fully FC
-
 
 def save_cases(seed=0, root='pickles'):
     print('-----------------')
@@ -109,7 +101,6 @@ def save_cases(seed=0, root='pickles'):
                     _use_new_zipfile_serialization=use_new_zip,
                     pickle_protocol=proto,
                     pickle_module=module)
-
 
 def load_and_check_cases(seed=0, root='pickles'):
     print('-----------------------------------------')
@@ -164,7 +155,6 @@ def load_and_check_cases(seed=0, root='pickles'):
                     assert check_val0.dtype == loaded_val0.dtype
                     assert check_val0.tolist()== loaded_val0.tolist()
 
-
                 # Check that storage sharing is preserved
                 for idx1 in range(len(check_list) - 1 - idx0):
                     check_val1 = check_list[idx1]
@@ -198,13 +188,20 @@ if __name__ == '__main__':
         default=False,
         help='Load all test cases and check for correctness')
 
+    parser.add_argument(
+        '--seed',
+        default=0,
+        type=int,
+        metavar='S',
+        help='Set PyTorch RNG seed')
+
     args = parser.parse_args()
 
     if args.save:
-        save_cases(seed)
+        save_cases(args.seed)
 
     if args.load:
-        load_and_check_cases(seed)
+        load_and_check_cases(args.seed)
 
     if not args.save and not args.load:
         parser.print_help()
