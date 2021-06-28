@@ -34,12 +34,15 @@ def dtype_name(dtype):
 
 # Determine whether we have the old or new Storage API
 def is_new_api():
-    try:
-        torch.FloatStorage()
-    except RuntimeError:
-        return True
-    else:
-        return False
+    if not hasattr(is_new_api, 'cache'):
+        try:
+            torch.FloatStorage()
+        except RuntimeError:
+            is_new_api.cache = True
+        else:
+            is_new_api.cache = False
+
+    return is_new_api.cache
 
 def get_storage(tensor):
     if is_new_api():
@@ -132,18 +135,18 @@ def load_and_check_cases(seed=0, root='pickles'):
                 check_val0 = check_list[idx0]
                 loaded_val0 = loaded_list[idx0]
 
+
                 # Check that loaded values are what they should be
+                assert type(check_val0) == type(loaded_val0)
+
                 if torch.is_tensor(check_val0):
-                    if not check_val0.eq(loaded_val0).all():
-                        print(f'{file_name}: FAIL - values incorrect')
-                        passed = False
-                        break
+                    assert check_val0.eq(loaded_val0).all()
                 elif torch.is_storage(check_val0):
-                    #print(loaded_val0)
-                    if not check_val0.tolist() == loaded_val0.tolist():
-                        print(f'{file_name}: FAIL - values incorrect')
-                        passed = False
-                        break
+                    assert (check_val0.tolist() == loaded_val0.tolist())
+                elif isinstance(check_val0, torch.storage.TypedStorage):
+                    assert check_val0.dtype == loaded_val0.dtype
+                    assert check_val0.storage.tolist()== loaded_val0.storage.tolist()
+
 
                 # Check that storage sharing is preserved
                 for idx1 in range(len(check_list) - 1 - idx0):
