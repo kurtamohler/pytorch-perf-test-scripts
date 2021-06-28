@@ -93,22 +93,37 @@ def save_cases(seed=0, root='pickles'):
             # protocol number
             [0, 1, 2, 3, 4, 5],
             # pickle module
-            [dill, pickle])
-        for use_new_zip, proto, module in pickle_settings:
+            [dill, pickle],
+            # use pickle module directly, rather than torch.load/save
+            [True, False])
+
+        for use_new_zip, proto, module, direct in pickle_settings:
             file_name = f'{case_name}_{"newzip" if use_new_zip else "oldzip"}_proto{proto}_{module.__name__}'
-            torch.save(
-                save_list,
-                os.path.join(root, file_name),
-                _use_new_zipfile_serialization=use_new_zip,
-                pickle_protocol=proto,
-                pickle_module=module)
+
+            if direct:
+                if use_new_zip:
+                    continue
+
+                file_name += '_direct'
+                with open (os.path.join(root, file_name), 'wb') as f:
+                    module.dump(
+                        save_list,
+                        f,
+                        protocol=proto)
+
+            else:
+                torch.save(
+                    save_list,
+                    os.path.join(root, file_name),
+                    _use_new_zipfile_serialization=use_new_zip,
+                    pickle_protocol=proto,
+                    pickle_module=module)
 
 
 def load_and_check_cases(seed=0, root='pickles'):
     print('-----------------------------------------')
     print('Load test cases and check for correctness')
     print('-----------------------------------------')
-    passed = True
     for case_name, check_list in regular_serialization(seed).items():
         pickle_settings = itertools.product(
             # new zip format
@@ -116,20 +131,31 @@ def load_and_check_cases(seed=0, root='pickles'):
             # protocol number
             [0, 1, 2, 3, 4, 5],
             # pickle module
-            [dill, pickle])
+            [dill, pickle],
+            # use pickle module directly, rather than torch.load/save
+            [True, False])
 
-        for use_new_zip, proto, module in pickle_settings:
+        for use_new_zip, proto, module, direct in pickle_settings:
             # TODO: Protocol 0 doesn't work, even if we save and load from the
             # same pytorch version. Probably should file an issue
             if proto == 0:
                 continue
 
             file_name = f'{case_name}_{"newzip" if use_new_zip else "oldzip"}_proto{proto}_{module.__name__}'
-            loaded_list = torch.load(
-                os.path.join(root, file_name),
-                pickle_module=module)
 
-            passed = True
+            if direct:
+                if use_new_zip:
+                    continue
+                file_name += '_direct'
+                print(file_name)
+                with open(os.path.join(root, file_name), 'rb') as f:
+                    loaded_list = module.load(
+                        f)
+            else:
+                print(file_name)
+                loaded_list = torch.load(
+                    os.path.join(root, file_name),
+                    pickle_module=module)
 
             for idx0 in range(len(check_list)):
                 check_val0 = check_list[idx0]
@@ -154,16 +180,9 @@ def load_and_check_cases(seed=0, root='pickles'):
                     loaded_val1 = loaded_list[idx0]
 
                     if check_val0.data_ptr() == check_val1.data_ptr():
-                        if not loaded_val0.data_ptr() == loaded_val1.data_ptr():
-                            print(f'{file_name}: FAIL - sharing not preserved')
-                            passed = False
-                            break
+                        assert loaded_val0.data_ptr() == loaded_val1.data_ptr()
 
-                if not passed:
-                    break
-
-    if passed:
-        print('all cases PASSED')
+    print('all cases PASSED')
 
 
 if __name__ == '__main__':
