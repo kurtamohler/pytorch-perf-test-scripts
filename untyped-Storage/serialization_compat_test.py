@@ -1,12 +1,3 @@
-# This file contains generator functions for the tensors and storages used in
-# forward compatibility checking tests. The generators are supposed to return
-# the same randomized data each time they are run with the same seed value.
-# The generators should be run and the results saved to files in a newer
-# version of PyTorch that has untyped storages. Then, an older version of
-# PyTorch that has typed storages should run the generators again (making sure
-# to use the same seed value that was used to initially generate them), read
-# the file associated with each test case, and compare the results.
-
 import argparse
 import itertools
 import os
@@ -171,7 +162,7 @@ def load_and_check_cases(seed=0, root='pickles'):
                     assert (check_val0.tolist() == loaded_val0.tolist())
                 elif isinstance(check_val0, torch.storage.TypedStorage):
                     assert check_val0.dtype == loaded_val0.dtype
-                    assert check_val0.storage.tolist()== loaded_val0.storage.tolist()
+                    assert check_val0.tolist()== loaded_val0.tolist()
 
 
                 # Check that storage sharing is preserved
@@ -188,8 +179,12 @@ def load_and_check_cases(seed=0, root='pickles'):
 if __name__ == '__main__':
     seed = 0
 
-    parser = argparse.ArgumentParser(
-        description='Test FC for PyTorch serialization')
+    parser = argparse.ArgumentParser(description=(
+        'Test FC and BC for PyTorch serialization. To use this test, run with '
+        'the "save" option in one environment to create pickle files for many '
+        'different tensors/storages. Then run with the "load" option in '
+        'a different environment to check that the correct data gets loaded back '
+        'up.'))
 
     parser.add_argument(
         '--save',
@@ -210,3 +205,6 @@ if __name__ == '__main__':
 
     if args.load:
         load_and_check_cases(seed)
+
+    if not args.save and not args.load:
+        parser.print_help()
