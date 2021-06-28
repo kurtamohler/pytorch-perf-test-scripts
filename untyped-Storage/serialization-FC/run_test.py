@@ -44,6 +44,12 @@ def regular_serialization(seed=0):
         test_cases[f'{base_name}_0'] = [
             make_tensor((3, 5), device, dtype, low=-9, high=9)
         ]
+        a = make_tensor((3, 2, 2), device, dtype, low=-9, high=9)
+        test_cases[f'{base_name}_0'] = [
+            a.view((2, 6, 1)),
+            a,
+            a[1:],
+        ]
 
     return test_cases
 
@@ -51,7 +57,7 @@ def regular_serialization(seed=0):
 
 
 def pickle_all(seed=0, root='pickles'):
-    print('Pickling for all test cases')
+    print('Pickling all test cases')
     if not os.path.exists(root):
         os.makedirs(root)
 
@@ -74,7 +80,7 @@ def pickle_all(seed=0, root='pickles'):
 
 
 def unpickle_all(seed=0, root='pickles'):
-    print('Unpickling for all test cases')
+    print('Unpickling all test cases')
     passed = True
     for case_name, check_list in regular_serialization(seed).items():
         pickle_settings = itertools.product(
@@ -96,10 +102,23 @@ def unpickle_all(seed=0, root='pickles'):
                 os.path.join(root, file_name),
                 pickle_module=module)
 
-            for check_val, loaded_val in zip(check_list, loaded_list):
-                if not check_val.eq(check_val).all():
-                    print(f'{file_name}: FAIL')
+            for idx0 in range(len(check_list)):
+                check_val0 = check_list[idx0]
+                loaded_val0 = loaded_list[idx0]
+
+                # Check that loaded values are what they should be
+                if not check_val0.eq(loaded_val0).all():
+                    print(f'{file_name}: FAIL - values incorrect')
                     passed = False
+
+                # Check that storage sharing is preserved
+                for idx1 in range(len(check_list) - 1 - idx0):
+                    check_val1 = check_list[idx1]
+                    loaded_val1 = loaded_list[idx0]
+
+                    if check_val0.data_ptr() == check_val1.data_ptr():
+                        if not loaded_val0.data_ptr() == loaded_val1.data_ptr():
+                            print(f'{file_name}: FAIL - sharing not preserved')
 
     if passed:
         print('all cases PASSED')
