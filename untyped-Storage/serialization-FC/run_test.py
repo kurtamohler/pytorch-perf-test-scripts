@@ -10,6 +10,8 @@
 import itertools
 import os
 import torch
+import dill
+import pickle
 from torch.testing._internal.common_utils import make_tensor
 
 all_dtypes = [
@@ -54,28 +56,45 @@ def pickle_all(seed=0, root='pickles'):
         os.makedirs(root)
 
     for case_name, save_list in regular_serialization(seed).items():
-        for use_new_zip, proto in itertools.product([True, False], [0, 1, 2, 3, 4, 5]):
-            file_name = f'{case_name}_{"newzip" if use_new_zip else "oldzip"}_proto{proto}'
+        pickle_settings = itertools.product(
+            # new zip format
+            [True, False],
+            # protocol number
+            [0, 1, 2, 3, 4, 5],
+            # pickle module
+            [dill, pickle])
+        for use_new_zip, proto, module in pickle_settings:
+            file_name = f'{case_name}_{"newzip" if use_new_zip else "oldzip"}_proto{proto}_{module.__name__}'
             torch.save(
                 save_list,
                 os.path.join(root, file_name),
                 _use_new_zipfile_serialization=use_new_zip,
-                pickle_protocol=proto)
+                pickle_protocol=proto,
+                pickle_module=module)
 
 
 def unpickle_all(seed=0, root='pickles'):
     print('Unpickling for all test cases')
     passed = True
     for case_name, check_list in regular_serialization(seed).items():
-        for use_new_zip, proto in itertools.product([True, False], [0, 1, 2, 3, 4, 5]):
+        pickle_settings = itertools.product(
+            # new zip format
+            [True, False],
+            # protocol number
+            [0, 1, 2, 3, 4, 5],
+            # pickle module
+            [dill, pickle])
+
+        for use_new_zip, proto, module in pickle_settings:
             # TODO: Protocol 0 doesn't work, even if we save and load from the
             # same pytorch version. Probably should file an issue
             if proto == 0:
                 continue
 
-            file_name = f'{case_name}_{"newzip" if use_new_zip else "oldzip"}_proto{proto}'
+            file_name = f'{case_name}_{"newzip" if use_new_zip else "oldzip"}_proto{proto}_{module.__name__}'
             loaded_list = torch.load(
-                os.path.join(root, file_name))
+                os.path.join(root, file_name),
+                pickle_module=module)
 
             for check_val, loaded_val in zip(check_list, loaded_list):
                 if not check_val.eq(check_val).all():
