@@ -52,13 +52,27 @@ def regular_serialization(seed=0):
             make_tensor((3, 5), device, dtype, low=-9, high=9)
         ]
 
-        a = make_tensor((3, 2, 2), device, dtype, low=-9, high=9)
+        a = make_tensor((15, 5, 5), device, dtype, low=-9, high=9)
         test_cases[f'{base_name}_1'] = [
             get_storage(a),
-            a.view((2, 6, 1)),
+            a.view((5, 3, 25)),
             a,
             a[1:],
         ]
+
+        if dtype in [torch.float32, torch.float64]:
+            m = torch.nn.Linear(5, 10)
+            m.weight = torch.nn.Parameter(m.weight.to(dtype).to(device))
+            m.bias = torch.nn.Parameter(m.bias.to(dtype).to(device))
+            test_cases[f'{base_name}_2'] = [
+                m
+            ]
+
+
+        # TODO: test JIT
+        # TODO: test quantized (per_tensor_affine, per_channel_affine, and per_channel_affine_float_qparams
+
+        # TODO: test sparse COO
 
     return test_cases
 
@@ -77,17 +91,17 @@ def save_cases(seed=0, root='pickles'):
             [0, 1, 2, 3, 4, 5],
             # pickle module
             [dill, pickle],
-            # use pickle module directly, rather than torch.load/save
+            # use pickle module dump/load, rather than torch.save/load
             [True, False])
 
-        for use_new_zip, proto, module, direct in pickle_settings:
+        for use_new_zip, proto, module, pickledump in pickle_settings:
             file_name = f'{case_name}_{"newzip" if use_new_zip else "oldzip"}_proto{proto}_{module.__name__}'
 
-            if direct:
+            if pickledump:
                 if use_new_zip:
                     continue
 
-                file_name += '_direct'
+                file_name += '_pickledump'
                 with open (os.path.join(root, file_name), 'wb') as f:
                     module.dump(
                         save_list,
@@ -114,10 +128,10 @@ def load_and_check_cases(seed=0, root='pickles'):
             [0, 1, 2, 3, 4, 5],
             # pickle module
             [dill, pickle],
-            # use pickle module directly, rather than torch.load/save
+            # use pickle module dump/load, rather than torch.save/load
             [True, False])
 
-        for use_new_zip, proto, module, direct in pickle_settings:
+        for use_new_zip, proto, module, pickledump in pickle_settings:
             # TODO: Protocol 0 doesn't work, even if we save and load from the
             # same pytorch version. Probably should file an issue
             if proto == 0:
@@ -125,10 +139,10 @@ def load_and_check_cases(seed=0, root='pickles'):
 
             file_name = f'{case_name}_{"newzip" if use_new_zip else "oldzip"}_proto{proto}_{module.__name__}'
 
-            if direct:
+            if pickledump:
                 if use_new_zip:
                     continue
-                file_name += '_direct'
+                file_name += '_pickledump'
                 print(file_name)
                 with open(os.path.join(root, file_name), 'rb') as f:
                     loaded_list = module.load(
@@ -148,12 +162,19 @@ def load_and_check_cases(seed=0, root='pickles'):
                 assert type(check_val0) == type(loaded_val0)
 
                 if torch.is_tensor(check_val0):
+                    assert check_val0.device == loaded_val0.device
                     assert check_val0.eq(loaded_val0).all()
                 elif torch.is_storage(check_val0):
-                    assert (check_val0.tolist() == loaded_val0.tolist())
+                    assert check_val0.device == loaded_val0.device
+                    assert check_val0.tolist() == loaded_val0.tolist()
                 elif isinstance(check_val0, torch.storage.TypedStorage):
+                    assert check_val0.storage.device == loaded_val0.storage.device
                     assert check_val0.dtype == loaded_val0.dtype
                     assert check_val0.tolist()== loaded_val0.tolist()
+                elif issubclass(type(check_val0), torch.nn.Module):
+                    param_pairs = zip(check_val0.parameters(), loaded_val0.parameters())
+                    assert all([p0.device == p1.device for p0, p1 in param_pairs])
+                    assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
 
                 # Check that storage sharing is preserved
                 for idx1 in range(len(check_list) - 1 - idx0):
