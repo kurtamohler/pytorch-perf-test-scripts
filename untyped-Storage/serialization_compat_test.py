@@ -42,7 +42,7 @@ def get_storage(tensor):
         return tensor.storage()
 
 # Generate test cases for regular serialization (like torch.save/load)
-def regular_serialization(seed=0):
+def regular_serialization(seed):
     torch.manual_seed(seed)
     test_cases = {}
     for dtype, device in itertools.product(all_dtypes, all_devices):
@@ -61,9 +61,7 @@ def regular_serialization(seed=0):
         ]
 
         if dtype.is_floating_point or dtype.is_complex:
-            m = torch.nn.Linear(5, 10)
-            m.weight = torch.nn.Parameter(m.weight.to(dtype).to(device))
-            m.bias = torch.nn.Parameter(m.bias.to(dtype).to(device))
+            m = torch.nn.Linear(5, 10, dtype=dtype, device=device)
             test_cases[f'{base_name}_2'] = [
                 m
             ]
@@ -75,29 +73,31 @@ def regular_serialization(seed=0):
 
     return test_cases
 
-def jit_script_serialization(seed=0):
+def jit_serialization(seed):
     torch.manual_seed(seed)
     test_cases = {}
     for dtype, device in itertools.product(all_dtypes, all_devices):
         base_name = f'jit_serialization_{dtype_name(dtype)}_{device}'
 
         if dtype.is_floating_point or dtype.is_complex:
-            m = torch.nn.Linear(5, 10)
-            m.weight = torch.nn.Parameter(m.weight.to(dtype).to(device))
-            m.bias = torch.nn.Parameter(m.bias.to(dtype).to(device))
-            test_cases[f'{base_name}_0'] = torch.jit.script(m)
+            m = torch.nn.Linear(5, 10, dtype=dtype, device=device)
+            test_cases[f'{base_name}_script'] = torch.jit.script(m)
+
+            m = torch.nn.Linear(5, 10, dtype=dtype, device=device)
+            a = make_tensor((5,), device, dtype, low=-9, high=9)
+            test_cases[f'{base_name}_trace'] = torch.jit.trace(m, a)
 
     return test_cases
 
-def save_cases(seed=0, root='pickles'):
+def save_cases(seed, root='pickles'):
     print('-----------------')
     print('Saving test cases')
     print('-----------------')
     if not os.path.exists(root):
         os.makedirs(root)
 
-    for case_name, save_script in jit_script_serialization(seed).items():
-        save_script.save(os.path.join(root, case_name))
+    for case_name, save_script in jit_serialization(seed).items():
+        torch.jit.save(save_script, os.path.join(root, case_name))
 
     for case_name, save_list in regular_serialization(seed).items():
         pickle_settings = itertools.product(
@@ -134,16 +134,32 @@ def save_cases(seed=0, root='pickles'):
 
     print('done')
 
-def load_and_check_cases(seed=0, root='pickles'):
+def has_data_ptr(obj):
+    return torch.is_tensor(obj) or torch.is_storage(obj) or (is_new_api() and isinstance(obj, torch.storage.TypedStorage))
+
+def storage_ptr(obj):
+    if torch.is_tensor(obj):
+        return obj.storage().data_ptr()
+    elif torch.is_storage(obj):
+        return obj.data_ptr()
+    elif is_new_api() and isinstance(obj, torch.storage.TypedStorage):
+        return obj.data_ptr()
+    else:
+        assert False, f'type {type(obj)} is not supported'
+
+
+
+def load_and_check_cases(seed, root='pickles'):
     print('-----------------------------------------')
     print('Load test cases and check for correctness')
     print('-----------------------------------------')
-    for case_name, check_script in jit_script_serialization(seed).items():
+    for case_name, check_script in jit_serialization(seed).items():
         print(case_name)
         load_script = torch.jit.load(os.path.join(root, case_name))
 
         assert check_script.code == load_script.code
 
+        # TODO: Maybe would be better to check state_dict?
         param_pairs = zip(check_script.parameters(), load_script.parameters())
         assert all([p0.device == p1.device for p0, p1 in param_pairs])
         assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
@@ -185,7 +201,6 @@ def load_and_check_cases(seed=0, root='pickles'):
                 check_val0 = check_list[idx0]
                 loaded_val0 = loaded_list[idx0]
 
-
                 # Check that loaded values are what they should be
                 assert type(check_val0) == type(loaded_val0)
 
@@ -204,13 +219,16 @@ def load_and_check_cases(seed=0, root='pickles'):
                     assert check_val0.dtype == loaded_val0.dtype
                     assert check_val0.tolist()== loaded_val0.tolist()
 
+                if not has_data_ptr(check_val0):
+                    continue
+
                 # Check that storage sharing is preserved
-                for idx1 in range(len(check_list) - 1 - idx0):
+                for idx1 in range(idx0 + 1, len(check_list)):
                     check_val1 = check_list[idx1]
                     loaded_val1 = loaded_list[idx0]
 
-                    if check_val0.data_ptr() == check_val1.data_ptr():
-                        assert loaded_val0.data_ptr() == loaded_val1.data_ptr()
+                    if storage_ptr(check_val0) == storage_ptr(check_val1):
+                        assert storage_ptr(loaded_val0) == storage_ptr(loaded_val1)
 
     print('all cases PASSED')
 
