@@ -61,15 +61,33 @@ def regular_serialization(seed):
         ]
 
         if dtype.is_floating_point or dtype.is_complex:
-            m = torch.nn.Linear(5, 10, dtype=dtype, device=device)
-            test_cases[f'{base_name}_2'] = [
-                m
-            ]
+            m = torch.nn.Linear(50, 10, dtype=dtype, device=device)
+            test_cases[f'{base_name}_module_0'] = [m]
 
+        # Quantization
+        if dtype == torch.float and device == 'cpu':
+            for qdtype in [torch.quint8, torch.qint8, torch.qint32, torch.quint4x2]:
+                a = make_tensor((10, 3, 8, 2, 4), device, dtype, low=-9, high=9)
+                q = torch.quantize_per_tensor(a, 1.0, 2, qdtype)
+                test_cases[f'{base_name}_quant_0_{dtype_name(qdtype)}'] = [q]
+                test_cases[f'{base_name}_quant_1_{dtype_name(qdtype)}'] = [a, q]
 
-        # TODO: test quantized (per_tensor_affine, per_channel_affine, and per_channel_affine_float_qparams
+                # TODO: For some reason, qint32 throws an illegal instruction
+                # error, for both master and local branch. Either I'm doing
+                # something wrong or it's an actual problem. Either way,
+                # I should file an issue
+                if qdtype == torch.qint32:
+                    continue
+
+                a = make_tensor((10, 3, 8, 2, 4), device, dtype, low=-9, high=9)
+                scales = make_tensor((8,), device, dtype, low=-9, high=9)
+                zero_points = make_tensor((8,), device, dtype, low=-9, high=9)
+                q = torch.quantize_per_channel(a, scales, zero_points, 2, qdtype)
+                test_cases[f'{base_name}_quant_channel_0_{dtype_name(qdtype)}'] = [q]
+                test_cases[f'{base_name}_quant_channel_1_{dtype_name(qdtype)}'] = [a, q]
 
         # TODO: test sparse COO
+        # TODO: test packaging
 
     return test_cases
 
@@ -80,11 +98,11 @@ def jit_serialization(seed):
         base_name = f'jit_serialization_{dtype_name(dtype)}_{device}'
 
         if dtype.is_floating_point or dtype.is_complex:
-            m = torch.nn.Linear(5, 10, dtype=dtype, device=device)
+            m = torch.nn.Linear(50, 10, dtype=dtype, device=device)
             test_cases[f'{base_name}_script'] = torch.jit.script(m)
 
-            m = torch.nn.Linear(5, 10, dtype=dtype, device=device)
-            a = make_tensor((5,), device, dtype, low=-9, high=9)
+            m = torch.nn.Linear(50, 10, dtype=dtype, device=device)
+            a = make_tensor((50,), device, dtype, low=-9, high=9)
             test_cases[f'{base_name}_trace'] = torch.jit.trace(m, a)
 
     return test_cases
@@ -207,17 +225,23 @@ def load_and_check_cases(seed, root='pickles'):
                 if torch.is_tensor(check_val0):
                     assert check_val0.device == loaded_val0.device
                     assert check_val0.eq(loaded_val0).all()
+
                 elif torch.is_storage(check_val0):
                     assert check_val0.device == loaded_val0.device
                     assert check_val0.tolist() == loaded_val0.tolist()
+
                 elif issubclass(type(check_val0), torch.nn.Module):
                     param_pairs = zip(check_val0.parameters(), loaded_val0.parameters())
                     assert all([p0.device == p1.device for p0, p1 in param_pairs])
                     assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
-                elif isinstance(check_val0, torch.storage.TypedStorage):
+
+                elif is_new_api() and isinstance(check_val0, torch.storage.TypedStorage):
                     assert check_val0.storage.device == loaded_val0.storage.device
                     assert check_val0.dtype == loaded_val0.dtype
                     assert check_val0.tolist()== loaded_val0.tolist()
+
+                else:
+                    assert False, f'type {type(check_val0)} not supported'
 
                 if not has_data_ptr(check_val0):
                     continue
