@@ -60,7 +60,7 @@ def regular_serialization(seed=0):
             a[1:],
         ]
 
-        if dtype in [torch.float32, torch.float64]:
+        if dtype.is_floating_point or dtype.is_complex:
             m = torch.nn.Linear(5, 10)
             m.weight = torch.nn.Parameter(m.weight.to(dtype).to(device))
             m.bias = torch.nn.Parameter(m.bias.to(dtype).to(device))
@@ -69,10 +69,23 @@ def regular_serialization(seed=0):
             ]
 
 
-        # TODO: test JIT
         # TODO: test quantized (per_tensor_affine, per_channel_affine, and per_channel_affine_float_qparams
 
         # TODO: test sparse COO
+
+    return test_cases
+
+def jit_script_serialization(seed=0):
+    torch.manual_seed(seed)
+    test_cases = {}
+    for dtype, device in itertools.product(all_dtypes, all_devices):
+        base_name = f'jit_serialization_{dtype_name(dtype)}_{device}'
+
+        if dtype.is_floating_point or dtype.is_complex:
+            m = torch.nn.Linear(5, 10)
+            m.weight = torch.nn.Parameter(m.weight.to(dtype).to(device))
+            m.bias = torch.nn.Parameter(m.bias.to(dtype).to(device))
+            test_cases[f'{base_name}_0'] = torch.jit.script(m)
 
     return test_cases
 
@@ -82,6 +95,9 @@ def save_cases(seed=0, root='pickles'):
     print('-----------------')
     if not os.path.exists(root):
         os.makedirs(root)
+
+    for case_name, save_script in jit_script_serialization(seed).items():
+        save_script.save(os.path.join(root, case_name))
 
     for case_name, save_list in regular_serialization(seed).items():
         pickle_settings = itertools.product(
@@ -116,10 +132,22 @@ def save_cases(seed=0, root='pickles'):
                     pickle_protocol=proto,
                     pickle_module=module)
 
+    print('done')
+
 def load_and_check_cases(seed=0, root='pickles'):
     print('-----------------------------------------')
     print('Load test cases and check for correctness')
     print('-----------------------------------------')
+    for case_name, check_script in jit_script_serialization(seed).items():
+        print(case_name)
+        load_script = torch.jit.load(os.path.join(root, case_name))
+
+        assert check_script.code == load_script.code
+
+        param_pairs = zip(check_script.parameters(), load_script.parameters())
+        assert all([p0.device == p1.device for p0, p1 in param_pairs])
+        assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
+
     for case_name, check_list in regular_serialization(seed).items():
         pickle_settings = itertools.product(
             # new zip format
@@ -143,15 +171,15 @@ def load_and_check_cases(seed=0, root='pickles'):
                 if use_new_zip:
                     continue
                 file_name += '_pickledump'
-                print(file_name)
                 with open(os.path.join(root, file_name), 'rb') as f:
                     loaded_list = module.load(
                         f)
             else:
-                print(file_name)
                 loaded_list = torch.load(
                     os.path.join(root, file_name),
                     pickle_module=module)
+
+            print(file_name)
 
             for idx0 in range(len(check_list)):
                 check_val0 = check_list[idx0]
@@ -167,14 +195,14 @@ def load_and_check_cases(seed=0, root='pickles'):
                 elif torch.is_storage(check_val0):
                     assert check_val0.device == loaded_val0.device
                     assert check_val0.tolist() == loaded_val0.tolist()
-                elif isinstance(check_val0, torch.storage.TypedStorage):
-                    assert check_val0.storage.device == loaded_val0.storage.device
-                    assert check_val0.dtype == loaded_val0.dtype
-                    assert check_val0.tolist()== loaded_val0.tolist()
                 elif issubclass(type(check_val0), torch.nn.Module):
                     param_pairs = zip(check_val0.parameters(), loaded_val0.parameters())
                     assert all([p0.device == p1.device for p0, p1 in param_pairs])
                     assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
+                elif isinstance(check_val0, torch.storage.TypedStorage):
+                    assert check_val0.storage.device == loaded_val0.storage.device
+                    assert check_val0.dtype == loaded_val0.dtype
+                    assert check_val0.tolist()== loaded_val0.tolist()
 
                 # Check that storage sharing is preserved
                 for idx1 in range(len(check_list) - 1 - idx0):
