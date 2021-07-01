@@ -15,6 +15,16 @@ test_cases = [
     ((3, 3, 10, 12), 'reflect', ((0, 0), (0, 0), (2, 9), (0, 3)), {}, {}),
     ((3, 3, 10, 12), 'reflect', ((0, 0), (0, 0), (9, 9), (11, 11)), {}, {}),
     ((1, 1, 100, 100), 'reflect', ((0, 0), (0, 0), (99, 99), (99, 99)), {}, {}),
+
+    ((10, 10, 10), 'edge', ((0, 0), (0, 0), (9, 9)), {}, {}),
+    ((3, 3, 10, 12), 'edge', ((0, 0), (0, 0), (2, 9), (0, 3)), {}, {}),
+    ((3, 3, 10, 12), 'edge', ((0, 0), (0, 0), (9, 9), (11, 11)), {}, {}),
+    ((1, 1, 100, 100), 'edge', ((0, 0), (0, 0), (99, 99), (99, 99)), {}, {}),
+
+    ((10, 10, 10), 'wrap', ((0, 0), (0, 0), (9, 9)), {}, {}),
+    ((3, 3, 10, 12), 'wrap', ((0, 0), (0, 0), (2, 9), (0, 3)), {}, {}),
+    ((3, 3, 10, 12), 'wrap', ((0, 0), (0, 0), (9, 9), (11, 11)), {}, {}),
+    ((1, 1, 100, 100), 'wrap', ((0, 0), (0, 0), (99, 99), (99, 99)), {}, {}),
 ]
 
 dtypes = [
@@ -69,7 +79,7 @@ for device, dtype in itertools.product(devices, dtypes):
         res_numpy = np.pad(input_numpy, pad_width_numpy, mode=mode_numpy, **kwargs_numpy)
 
         mode_torch = get_mode_torch(mode_numpy)
-        pad_width_torch = get_pad_width_torch(pad_width_numpy, mode_numpy)
+        pad_width_torch = get_pad_width_torch(pad_width_numpy, mode_torch)
 
         try:
             res_torch = torch.nn.functional.pad(input_torch, pad_width_torch, mode=mode_torch, **kwargs_torch)
