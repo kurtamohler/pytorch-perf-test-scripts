@@ -10,6 +10,12 @@ test_cases = [
     ((10, 10), 'constant', ((2, 2), (2, 2)), {}, {}),
     ((10, 10), 'constant', ((2, 2), (2, 2)), {'constant_values': 10}, {'value': 10}),
     ((5, 2, 4, 1, 7), 'constant', ((1, 2), (6, 4), (10, 7), (3, 3), (0, 0)), {'constant_values': 89}, {'value': 89}),
+    ((15,), 'constant', ((100, 100),), {'constant_values': 1234}, {'value': 1234}),
+    ((15,), 'constant', ((0, 1000),), {'constant_values': 1234}, {'value': 1234}),
+    ((15,), 'constant', ((100, 0),), {'constant_values': 1234}, {'value': 1234}),
+    ((0,), 'constant', ((100, 0),), {'constant_values': 1234}, {'value': 1234}),
+    ((0,), 'constant', ((0, 100),), {'constant_values': 1234}, {'value': 1234}),
+    ((0,), 'constant', ((0, 0),), {'constant_values': 1234}, {'value': 1234}),
 
     ((10, 10, 10), 'reflect', ((0, 0), (0, 0), (9, 9)), {}, {}),
     ((3, 3, 10, 12), 'reflect', ((0, 0), (0, 0), (2, 9), (0, 3)), {}, {}),
@@ -29,6 +35,7 @@ test_cases = [
 
 dtypes = [
     torch.float,
+    torch.float16,
     torch.double,
     torch.int,
     torch.long,
@@ -76,13 +83,14 @@ for device, dtype in itertools.product(devices, dtypes):
         input_torch = make_tensor(size, device, dtype, low=-9, high=9)
         input_numpy = input_torch.cpu().numpy()
 
-        res_numpy = np.pad(input_numpy, pad_width_numpy, mode=mode_numpy, **kwargs_numpy)
+        res_numpy = torch.from_numpy(
+            np.pad(input_numpy, pad_width_numpy, mode=mode_numpy, **kwargs_numpy))
 
         mode_torch = get_mode_torch(mode_numpy)
         pad_width_torch = get_pad_width_torch(pad_width_numpy, mode_torch)
 
         try:
-            res_torch = torch.nn.functional.pad(input_torch, pad_width_torch, mode=mode_torch, **kwargs_torch)
+            res_torch = torch.nn.functional.pad(input_torch, pad_width_torch, mode=mode_torch, **kwargs_torch).cpu()
         except RuntimeError as e:
             e_str = str(e)
 
@@ -96,7 +104,8 @@ for device, dtype in itertools.product(devices, dtypes):
                 raise e
 
         else:
-            assert torch.allclose(res_torch.cpu(), torch.from_numpy(res_numpy)), case_name
+            assert res_torch.size() == res_numpy.size(), case_name
+            assert torch.allclose(res_torch, res_numpy), case_name
 
 print()
 print("all test cases PASSED")
