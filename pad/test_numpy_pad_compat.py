@@ -20,7 +20,10 @@ test_cases = [
 dtypes = [
     torch.float,
     torch.double,
-    #torch.complex64
+    torch.int,
+    torch.long,
+    torch.complex64,
+    torch.complex128,
 ]
 
 devices = [
@@ -55,6 +58,7 @@ def get_pad_width_torch(pad_width_numpy, mode_torch):
 
     return pad_width_torch
 
+
 for device, dtype in itertools.product(devices, dtypes):
     for case_idx, (size, mode_numpy, pad_width_numpy, kwargs_numpy, kwargs_torch) in enumerate(test_cases):
         case_name = f'test_cases[{case_idx}], mode="{mode_numpy}", {device}, {str(dtype).split(".")[-1]}'
@@ -67,9 +71,23 @@ for device, dtype in itertools.product(devices, dtypes):
         mode_torch = get_mode_torch(mode_numpy)
         pad_width_torch = get_pad_width_torch(pad_width_numpy, mode_numpy)
 
-        res_torch = torch.nn.functional.pad(input_torch, pad_width_torch, mode=mode_torch, **kwargs_torch)
+        try:
+            res_torch = torch.nn.functional.pad(input_torch, pad_width_torch, mode=mode_torch, **kwargs_torch)
+        except RuntimeError as e:
+            e_str = str(e)
 
-        assert torch.allclose(res_torch.cpu(), torch.from_numpy(res_numpy)), case_name
+            if 'not implemented for' in e_str:
+                # If this case is not implemented in torch, we don't need to
+                # worry about compatibility
+                print(f'SKIP: {e_str} in {case_name}')
+                pass
 
+            else:
+                raise e
+
+        else:
+            assert torch.allclose(res_torch.cpu(), torch.from_numpy(res_numpy)), case_name
+
+print()
 print("all test cases PASSED")
 
