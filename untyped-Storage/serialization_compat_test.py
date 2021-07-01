@@ -161,7 +161,7 @@ def storage_ptr(obj):
     elif torch.is_storage(obj):
         return obj.data_ptr()
     elif is_new_api() and isinstance(obj, torch.storage.TypedStorage):
-        return obj.data_ptr()
+        return obj.storage.data_ptr()
     else:
         assert False, f'type {type(obj)} is not supported'
 
@@ -238,7 +238,7 @@ def load_and_check_cases(seed, root='pickles'):
                 elif is_new_api() and isinstance(check_val0, torch.storage.TypedStorage):
                     assert check_val0.storage.device == loaded_val0.storage.device
                     assert check_val0.dtype == loaded_val0.dtype
-                    assert check_val0.tolist()== loaded_val0.tolist()
+                    assert check_val0.storage.tolist()== loaded_val0.storage.tolist()
 
                 else:
                     assert False, f'type {type(check_val0)} not supported'
