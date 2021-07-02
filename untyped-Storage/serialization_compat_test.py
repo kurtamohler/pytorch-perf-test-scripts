@@ -105,6 +105,16 @@ def jit_serialization():
 
     return test_cases
 
+def package_serialization():
+    test_cases = {}
+
+    torch.package.package_exporter._gate_torchscript_serialization = False
+
+    for case_name, case_data in {**jit_serialization(), **regular_serialization()}.items():
+        test_cases[f'package_{case_name}'] = case_data
+
+    return test_cases
+
 def save_cases(seed, root='pickles'):
     torch.manual_seed(seed)
     print('-----------------')
@@ -149,6 +159,11 @@ def save_cases(seed, root='pickles'):
                     pickle_protocol=proto,
                     pickle_module=module)
 
+    for case_name, save_data in package_serialization().items():
+        path = os.path.join(root, case_name)
+        with torch.package.PackageExporter(path, verbose=False) as exp:
+            exp.save_pickle(case_name, case_name, save_data)
+
     print('done')
 
 def has_data_ptr(obj):
@@ -165,6 +180,53 @@ def storage_ptr(obj):
         assert False, f'type {type(obj)} is not supported'
 
 
+def check_regular_serialization(loaded_list, check_list):
+    for idx0 in range(len(check_list)):
+        check_val0 = check_list[idx0]
+        loaded_val0 = loaded_list[idx0]
+
+        # Check that loaded values are what they should be
+        assert type(check_val0) == type(loaded_val0)
+
+        if torch.is_tensor(check_val0):
+            assert check_val0.device == loaded_val0.device
+            assert check_val0.eq(loaded_val0).all()
+
+        elif torch.is_storage(check_val0):
+            assert check_val0.device == loaded_val0.device
+            assert check_val0.tolist() == loaded_val0.tolist()
+
+        elif issubclass(type(check_val0), torch.nn.Module):
+            param_pairs = zip(check_val0.parameters(), loaded_val0.parameters())
+            assert all([p0.device == p1.device for p0, p1 in param_pairs])
+            assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
+
+        elif is_new_api() and isinstance(check_val0, torch.storage.TypedStorage):
+            assert check_val0.storage.device == loaded_val0.storage.device
+            assert check_val0.dtype == loaded_val0.dtype
+            assert check_val0.storage.tolist()== loaded_val0.storage.tolist()
+
+        else:
+            assert False, f'type {type(check_val0)} not supported'
+
+        if not has_data_ptr(check_val0):
+            continue
+
+        # Check that storage sharing is preserved
+        for idx1 in range(idx0 + 1, len(check_list)):
+            check_val1 = check_list[idx1]
+            loaded_val1 = loaded_list[idx0]
+
+            if storage_ptr(check_val0) == storage_ptr(check_val1):
+                assert storage_ptr(loaded_val0) == storage_ptr(loaded_val1)
+
+def check_jit_serialization(loaded_script, check_script):
+    assert check_script.code == loaded_script.code
+
+    # TODO: Maybe would be better to check state_dict?
+    param_pairs = zip(check_script.parameters(), loaded_script.parameters())
+    assert all([p0.device == p1.device for p0, p1 in param_pairs])
+    assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
 
 def load_and_check_cases(seed, root='pickles'):
     torch.manual_seed(seed)
@@ -173,14 +235,9 @@ def load_and_check_cases(seed, root='pickles'):
     print('-----------------------------------------')
     for case_name, check_script in jit_serialization().items():
         print(case_name)
-        load_script = torch.jit.load(os.path.join(root, case_name))
+        loaded_script = torch.jit.load(os.path.join(root, case_name))
 
-        assert check_script.code == load_script.code
-
-        # TODO: Maybe would be better to check state_dict?
-        param_pairs = zip(check_script.parameters(), load_script.parameters())
-        assert all([p0.device == p1.device for p0, p1 in param_pairs])
-        assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
+        check_jit_serialization(loaded_script, check_script)
 
     for case_name, check_list in regular_serialization().items():
         pickle_settings = itertools.product(
@@ -215,44 +272,23 @@ def load_and_check_cases(seed, root='pickles'):
 
             print(file_name)
 
-            for idx0 in range(len(check_list)):
-                check_val0 = check_list[idx0]
-                loaded_val0 = loaded_list[idx0]
+            check_regular_serialization(loaded_list, check_list)
 
-                # Check that loaded values are what they should be
-                assert type(check_val0) == type(loaded_val0)
+    for case_name, check_data in package_serialization().items():
+        print(case_name)
+        path = os.path.join(root, case_name)
 
-                if torch.is_tensor(check_val0):
-                    assert check_val0.device == loaded_val0.device
-                    assert check_val0.eq(loaded_val0).all()
+        imp = torch.package.PackageImporter(path)
+        loaded_data = imp.load_pickle(case_name, case_name)
 
-                elif torch.is_storage(check_val0):
-                    assert check_val0.device == loaded_val0.device
-                    assert check_val0.tolist() == loaded_val0.tolist()
+        if case_name.startswith('package_regular_'):
+            check_regular_serialization(loaded_data, check_data)
 
-                elif issubclass(type(check_val0), torch.nn.Module):
-                    param_pairs = zip(check_val0.parameters(), loaded_val0.parameters())
-                    assert all([p0.device == p1.device for p0, p1 in param_pairs])
-                    assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
+        elif case_name.startswith('package_jit_'):
+            check_jit_serialization(loaded_data, check_data)
 
-                elif is_new_api() and isinstance(check_val0, torch.storage.TypedStorage):
-                    assert check_val0.storage.device == loaded_val0.storage.device
-                    assert check_val0.dtype == loaded_val0.dtype
-                    assert check_val0.storage.tolist()== loaded_val0.storage.tolist()
-
-                else:
-                    assert False, f'type {type(check_val0)} not supported'
-
-                if not has_data_ptr(check_val0):
-                    continue
-
-                # Check that storage sharing is preserved
-                for idx1 in range(idx0 + 1, len(check_list)):
-                    check_val1 = check_list[idx1]
-                    loaded_val1 = loaded_list[idx0]
-
-                    if storage_ptr(check_val0) == storage_ptr(check_val1):
-                        assert storage_ptr(loaded_val0) == storage_ptr(loaded_val1)
+        else:
+            assert False, f'Not sure how to check "{case_name}"'
 
     print('all cases PASSED')
 
