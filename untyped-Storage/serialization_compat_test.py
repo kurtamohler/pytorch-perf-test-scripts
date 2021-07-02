@@ -17,7 +17,7 @@ all_dtypes = [
 
 all_devices = [
     'cpu',
-    #'cuda',
+    'cuda',
 ]
 
 def dtype_name(dtype):
@@ -204,7 +204,7 @@ def check_regular_serialization(loaded_list, check_list):
         elif is_new_api() and isinstance(check_val0, torch.storage.TypedStorage):
             assert check_val0.storage.device == loaded_val0.storage.device
             assert check_val0.dtype == loaded_val0.dtype
-            assert check_val0.storage.tolist()== loaded_val0.storage.tolist()
+            assert check_val0.storage.tolist() == loaded_val0.storage.tolist()
 
         else:
             assert False, f'type {type(check_val0)} not supported'
