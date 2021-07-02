@@ -17,7 +17,7 @@ all_dtypes = [
 
 all_devices = [
     'cpu',
-    'cuda',
+    #'cuda',
 ]
 
 def dtype_name(dtype):
@@ -42,8 +42,7 @@ def get_storage(tensor):
         return tensor.storage()
 
 # Generate test cases for regular serialization (like torch.save/load)
-def regular_serialization(seed):
-    torch.manual_seed(seed)
+def regular_serialization():
     test_cases = {}
     for dtype, device in itertools.product(all_dtypes, all_devices):
         base_name = f'regular_serialization_{dtype_name(dtype)}_{device}'
@@ -91,8 +90,7 @@ def regular_serialization(seed):
 
     return test_cases
 
-def jit_serialization(seed):
-    torch.manual_seed(seed)
+def jit_serialization():
     test_cases = {}
     for dtype, device in itertools.product(all_dtypes, all_devices):
         base_name = f'jit_serialization_{dtype_name(dtype)}_{device}'
@@ -108,16 +106,17 @@ def jit_serialization(seed):
     return test_cases
 
 def save_cases(seed, root='pickles'):
+    torch.manual_seed(seed)
     print('-----------------')
     print('Saving test cases')
     print('-----------------')
     if not os.path.exists(root):
         os.makedirs(root)
 
-    for case_name, save_script in jit_serialization(seed).items():
+    for case_name, save_script in jit_serialization().items():
         torch.jit.save(save_script, os.path.join(root, case_name))
 
-    for case_name, save_list in regular_serialization(seed).items():
+    for case_name, save_list in regular_serialization().items():
         pickle_settings = itertools.product(
             # new zip format
             [True, False],
@@ -168,10 +167,11 @@ def storage_ptr(obj):
 
 
 def load_and_check_cases(seed, root='pickles'):
+    torch.manual_seed(seed)
     print('-----------------------------------------')
     print('Load test cases and check for correctness')
     print('-----------------------------------------')
-    for case_name, check_script in jit_serialization(seed).items():
+    for case_name, check_script in jit_serialization().items():
         print(case_name)
         load_script = torch.jit.load(os.path.join(root, case_name))
 
@@ -182,7 +182,7 @@ def load_and_check_cases(seed, root='pickles'):
         assert all([p0.device == p1.device for p0, p1 in param_pairs])
         assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
 
-    for case_name, check_list in regular_serialization(seed).items():
+    for case_name, check_list in regular_serialization().items():
         pickle_settings = itertools.product(
             # new zip format
             [True, False],
@@ -258,8 +258,6 @@ def load_and_check_cases(seed, root='pickles'):
 
 
 if __name__ == '__main__':
-    seed = 0
-
     parser = argparse.ArgumentParser(description=(
         'Test FC and BC for PyTorch serialization. To use this test, run with '
         'the "save" option in one environment to create pickle files for many '
