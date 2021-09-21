@@ -4,6 +4,7 @@ import os
 import torch
 import dill
 import pickle
+import functools
 from torch.testing._internal.common_utils import make_tensor
 
 all_dtypes = [
@@ -24,20 +25,20 @@ def dtype_name(dtype):
     return str(dtype).split('.')[-1]
 
 # Determine whether we have the old or new Storage API
+@functools.cache
 def is_new_api():
-    if not hasattr(is_new_api, 'cache'):
-        try:
-            torch.FloatStorage()
-        except RuntimeError:
-            is_new_api.cache = True
-        else:
-            is_new_api.cache = False
-
-    return is_new_api.cache
+    try:
+        torch.storage.TypedStorage
+    except AttributeError:
+        return False
+    else:
+        return True
 
 def get_storage(tensor):
     if is_new_api():
-        return torch.storage.TypedStorage(tensor.storage(), tensor.dtype)
+        return torch.storage.TypedStorage(
+            wrap_storage=tensor.storage()._untyped(),
+            dtype=tensor.dtype)
     else:
         return tensor.storage()
 
@@ -161,7 +162,7 @@ def save_cases(seed, root='pickles'):
 
     for case_name, save_data in package_serialization().items():
         path = os.path.join(root, case_name)
-        with torch.package.PackageExporter(path, verbose=False) as exp:
+        with torch.package.PackageExporter(path) as exp:
             exp.save_pickle(case_name, case_name, save_data)
 
     print('done')
@@ -175,7 +176,7 @@ def storage_ptr(obj):
     elif torch.is_storage(obj):
         return obj.data_ptr()
     elif is_new_api() and isinstance(obj, torch.storage.TypedStorage):
-        return obj.storage.data_ptr()
+        return obj._storage.data_ptr()
     else:
         assert False, f'type {type(obj)} is not supported'
 
@@ -186,7 +187,8 @@ def check_regular_serialization(loaded_list, check_list):
         loaded_val0 = loaded_list[idx0]
 
         # Check that loaded values are what they should be
-        assert type(check_val0) == type(loaded_val0)
+        assert type(check_val0) == type(loaded_val0), (
+            f'type should be {type(check_val0)} but got {type(loaded_val0)}')
 
         if torch.is_tensor(check_val0):
             assert check_val0.device == loaded_val0.device
@@ -202,9 +204,9 @@ def check_regular_serialization(loaded_list, check_list):
             assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
 
         elif is_new_api() and isinstance(check_val0, torch.storage.TypedStorage):
-            assert check_val0.storage.device == loaded_val0.storage.device
+            assert check_val0._storage.device == loaded_val0._storage.device
             assert check_val0.dtype == loaded_val0.dtype
-            assert check_val0.storage.tolist() == loaded_val0.storage.tolist()
+            assert check_val0._storage.tolist() == loaded_val0._storage.tolist()
 
         else:
             assert False, f'type {type(check_val0)} not supported'
