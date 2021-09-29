@@ -32,8 +32,8 @@ def bench1():
         ((20, 10, 10), 10, None),
         ((30, 10, 10), 10, None),
         ((100, 10, 10), 10, None),
-        ((10, 10, 10), 10, ((0, 1), (2, 3), (4, 5))),
-        ((10, 10, 10), ((10, 10), (10, 10), (10, 10)), ((0, 1), (2, 3), (4, 5))),
+        ((10, 10, 10), 10, 10.0),
+        ((10, 10, 10), ((10, 10), (10, 10), (10, 10)), 123),
         ((100, 100, 100), ((10, 10), (10, 10), (10, 10)), None),
     ]
 
@@ -89,7 +89,7 @@ def bench2():
     print('====================================')
     print('compare with torch.nn.functional.pad')
     print()
-    print('device dtype case_idx time_new time_old torch_speedup')
+    print('device dtype case_idx time_new time_old new_speedup')
     print()
 
     for device, dtype, (case_idx, (input_size, pad_width_new, pad_width_old, constant_values_new, constant_values_old)) in product(devices, dtypes, enumerate(cases)):
