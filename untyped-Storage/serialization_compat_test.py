@@ -7,6 +7,19 @@ import pickle
 import functools
 from torch.testing._internal.common_utils import make_tensor
 
+typed_storage_class = None
+
+try:
+    torch.storage.TypedStorage
+    typed_storage_class = torch.storage.TypedStorage
+except AttributeError:
+    try:
+        torch.storage._TypedStorage
+        typed_storage_class = torch.storage._TypedStorage
+    except AttributeError:
+        pass
+
+
 all_dtypes = [
     torch.int32,
     torch.int64,
@@ -27,16 +40,11 @@ def dtype_name(dtype):
 # Determine whether we have the old or new Storage API
 @functools.cache
 def is_new_api():
-    try:
-        torch.storage.TypedStorage
-    except AttributeError:
-        return False
-    else:
-        return True
+    return typed_storage_class is not None
 
 def get_storage(tensor):
     if is_new_api():
-        return torch.storage.TypedStorage(
+        return typed_storage_class(
             wrap_storage=tensor.storage()._untyped(),
             dtype=tensor.dtype)
     else:
@@ -96,12 +104,14 @@ def jit_serialization():
     for dtype, device in itertools.product(all_dtypes, all_devices):
         base_name = f'jit_serialization_{dtype_name(dtype)}_{device}'
 
-        if dtype.is_floating_point or dtype.is_complex:
-            m = torch.nn.Linear(50, 10, dtype=dtype, device=device)
+        if dtype.is_floating_point:
+            #m = torch.nn.Linear(50, 10, dtype=dtype, device=device)
+            m = torch.nn.Conv1d(16, 33, 3, stride=2, dtype=dtype, device=device)
             test_cases[f'{base_name}_script'] = torch.jit.script(m)
 
-            m = torch.nn.Linear(50, 10, dtype=dtype, device=device)
-            a = make_tensor((50,), device, dtype, low=-9, high=9)
+            #m = torch.nn.Linear(50, 10, dtype=dtype, device=device)
+            m = torch.nn.Conv1d(16, 33, 3, stride=2, dtype=dtype, device=device)
+            a = make_tensor((20, 16, 50), device, dtype, low=-9, high=9)
             test_cases[f'{base_name}_trace'] = torch.jit.trace(m, a)
 
     return test_cases
@@ -168,14 +178,14 @@ def save_cases(seed, root='pickles'):
     print('done')
 
 def has_data_ptr(obj):
-    return torch.is_tensor(obj) or torch.is_storage(obj) or (is_new_api() and isinstance(obj, torch.storage.TypedStorage))
+    return torch.is_tensor(obj) or torch.is_storage(obj) or (is_new_api() and isinstance(obj, typed_storage_class))
 
 def storage_ptr(obj):
     if torch.is_tensor(obj):
         return obj.storage().data_ptr()
     elif torch.is_storage(obj):
         return obj.data_ptr()
-    elif is_new_api() and isinstance(obj, torch.storage.TypedStorage):
+    elif is_new_api() and isinstance(obj, typed_storage_class):
         return obj._storage.data_ptr()
     else:
         assert False, f'type {type(obj)} is not supported'
@@ -203,7 +213,7 @@ def check_regular_serialization(loaded_list, check_list):
             assert all([p0.device == p1.device for p0, p1 in param_pairs])
             assert all([p0.eq(p1).all() for p0, p1 in param_pairs])
 
-        elif is_new_api() and isinstance(check_val0, torch.storage.TypedStorage):
+        elif is_new_api() and isinstance(check_val0, typed_storage_class):
             assert check_val0._storage.device == loaded_val0._storage.device
             assert check_val0.dtype == loaded_val0.dtype
             assert check_val0._storage.tolist() == loaded_val0._storage.tolist()
