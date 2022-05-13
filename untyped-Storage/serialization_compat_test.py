@@ -57,10 +57,10 @@ def regular_serialization():
         base_name = f'regular_serialization_{dtype_name(dtype)}_{device}'
 
         test_cases[f'{base_name}_0'] = [
-            make_tensor((3, 5), device, dtype, low=-9, high=9)
+            make_tensor((3, 5), device=device, dtype=dtype, low=-9, high=9)
         ]
 
-        a = make_tensor((15, 5, 5), device, dtype, low=-9, high=9)
+        a = make_tensor((15, 5, 5), device=device, dtype=dtype, low=-9, high=9)
         test_cases[f'{base_name}_1'] = [
             get_storage(a),
             a.view((5, 3, 25)),
@@ -75,7 +75,7 @@ def regular_serialization():
         # Quantization
         if dtype == torch.float and device == 'cpu':
             for qdtype in [torch.quint8, torch.qint8, torch.qint32, torch.quint4x2]:
-                a = make_tensor((10, 3, 8, 2, 4), device, dtype, low=-9, high=9)
+                a = make_tensor((10, 3, 8, 2, 4), device=device, dtype=dtype, low=-9, high=9)
                 q = torch.quantize_per_tensor(a, 1.0, 2, qdtype)
                 test_cases[f'{base_name}_quant_0_{dtype_name(qdtype)}'] = [q]
                 test_cases[f'{base_name}_quant_1_{dtype_name(qdtype)}'] = [a, q]
@@ -87,9 +87,9 @@ def regular_serialization():
                 if qdtype == torch.qint32:
                     continue
 
-                a = make_tensor((10, 3, 8, 2, 4), device, dtype, low=-9, high=9)
-                scales = make_tensor((8,), device, dtype, low=-9, high=9)
-                zero_points = make_tensor((8,), device, dtype, low=-9, high=9)
+                a = make_tensor((10, 3, 8, 2, 4), device=device, dtype=dtype, low=-9, high=9)
+                scales = make_tensor((8,), device=device, dtype=dtype, low=-9, high=9)
+                zero_points = make_tensor((8,), device=device, dtype=dtype, low=-9, high=9)
                 q = torch.quantize_per_channel(a, scales, zero_points, 2, qdtype)
                 test_cases[f'{base_name}_quant_channel_0_{dtype_name(qdtype)}'] = [q]
                 test_cases[f'{base_name}_quant_channel_1_{dtype_name(qdtype)}'] = [a, q]
@@ -111,7 +111,7 @@ def jit_serialization():
 
             #m = torch.nn.Linear(50, 10, dtype=dtype, device=device)
             m = torch.nn.Conv1d(16, 33, 3, stride=2, dtype=dtype, device=device)
-            a = make_tensor((20, 16, 50), device, dtype, low=-9, high=9)
+            a = make_tensor((20, 16, 50), device=device, dtype=dtype, low=-9, high=9)
             test_cases[f'{base_name}_trace'] = torch.jit.trace(m, a)
 
     return test_cases
